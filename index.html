@@ -24,6 +24,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 .header { background: linear-gradient(135deg, var(--green) 0%, var(--blue) 100%); color: white; padding: 20px; border-radius: 14px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
 .header h1 { font-size: 24px; }
+.header-user { font-size: 14px; opacity: 0.9; }
 .logout-btn { padding: 8px 16px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12px; }
 
 .section { display: none; }
@@ -38,6 +39,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .field textarea { min-height: 70px; resize: none; }
 
 .btn { width: 100%; padding: 14px; border: none; border-radius: 11px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; margin-top: 6px; background: linear-gradient(135deg, var(--green) 0%, #059669 100%); color: white; }
+.btn:hover { opacity: 0.9; }
 
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
 .metric { background: var(--card); border-radius: 12px; padding: 14px; text-align: center; border: 1px solid var(--border); }
@@ -59,6 +61,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 .empty { text-align: center; color: var(--text2); padding: 20px; }
 .success { color: var(--green); padding: 10px; background: rgba(16,185,129,0.1); border-radius: 8px; margin-bottom: 10px; text-align: center; }
+.backup-status { font-size: 12px; color: var(--text2); text-align: center; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -79,7 +82,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <div class="main-app" id="mainApp">
   <div class="header">
     <h1>🏠 Ghar Ka Hisab</h1>
-    <button class="logout-btn" onclick="logout()">Logout</button>
+    <div style="text-align: right;">
+      <div class="header-user" id="userDisplay">Welcome!</div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
   </div>
 
   <div class="nav">
@@ -161,6 +167,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <button class="btn" onclick="addEntry()">Save Entry</button>
       <div id="message"></div>
+      <div class="backup-status" id="backupStatus"></div>
     </div>
   </div>
 
@@ -173,6 +180,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 </div>
 
 <script>
+const BACKUP_URL = "https://script.google.com/macros/s/AKfycbxELbLDaE---_DN1j-7taANfm5xV88sw-hWHPz2FiAaEvLaoR9SrxlT7tpOqzMFJMrwTw/exec";
+
 let currentUser = null;
 let userDataMap = {};
 
@@ -184,6 +193,7 @@ function login(user) {
   currentUser = user;
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('mainApp').classList.add('visible');
+  document.getElementById('userDisplay').textContent = `👤 ${user}`;
   document.getElementById('entryDate').valueAsDate = new Date();
   renderDashboard();
 }
@@ -205,6 +215,35 @@ function showSection(id) {
   if (id === 'dashboard') renderDashboard();
 }
 
+async function backupToGoogleDrive() {
+  try {
+    const allData = {
+      timestamp: new Date().toISOString(),
+      familyData: {
+        'Rajendra': userDataMap['Rajendra'] || [],
+        'Pratibha': userDataMap['Pratibha'] || [],
+        'Abhishek': userDataMap['Abhishek'] || [],
+        'Monali': userDataMap['Monali'] || []
+      }
+    };
+    
+    const response = await fetch(BACKUP_URL, {
+      method: 'POST',
+      body: JSON.stringify(allData),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    const result = await response.json();
+    document.getElementById('backupStatus').textContent = '☁️ Backed up to Google Drive';
+    setTimeout(() => { document.getElementById('backupStatus').textContent = ''; }, 3000);
+    return true;
+  } catch (e) {
+    console.log('Backup status:', e);
+    document.getElementById('backupStatus').textContent = '⚠️ Offline (data saved locally)';
+    return false;
+  }
+}
+
 function addEntry() {
   const type = document.getElementById('entryType').value;
   const amount = parseFloat(document.getElementById('amount').value);
@@ -216,13 +255,17 @@ function addEntry() {
   if (!amount || amount <= 0) { alert('Please enter valid amount'); return; }
   if (!date) { alert('Please select date'); return; }
   
-  const entry = { id: Date.now(), type, amount, category, date, bank, notes };
+  const entry = { id: Date.now(), type, amount, category, date, bank, notes, user: currentUser };
   userDataMap[currentUser].push(entry);
   localStorage.setItem(`gkh_${currentUser}`, JSON.stringify(userDataMap[currentUser]));
   
   document.getElementById('message').innerHTML = '<div class="success">✅ Entry saved!</div>';
   document.getElementById('amount').value = '';
   document.getElementById('notes').value = '';
+  document.getElementById('backupStatus').textContent = '⏳ Backing up...';
+  
+  // Auto backup to Google Drive
+  backupToGoogleDrive();
   
   setTimeout(() => { document.getElementById('message').innerHTML = ''; }, 2000);
   renderDashboard();
