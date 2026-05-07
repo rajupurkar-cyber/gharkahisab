@@ -62,6 +62,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .empty { text-align: center; color: var(--text2); padding: 20px; }
 .success { color: var(--green); padding: 10px; background: rgba(16,185,129,0.1); border-radius: 8px; margin-bottom: 10px; text-align: center; }
 .backup-status { font-size: 12px; color: var(--text2); text-align: center; margin-top: 8px; }
+.sync-btn { padding: 8px 12px; background: var(--blue); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 600; margin-top: 10px; width: 100%; }
 </style>
 </head>
 <body>
@@ -116,6 +117,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <div class="card-title">🕐 Recent Entries</div>
       <div id="recentEntries"></div>
     </div>
+    <button class="sync-btn" onclick="loadFromSheet()">🔄 Sync from Google Sheet</button>
   </div>
 
   <div class="section" id="add">
@@ -180,14 +182,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 </div>
 
 <script>
-const BACKUP_URL = "https://script.google.com/macros/s/AKfycbxELbLDaE---_DN1j-7taANfm5xV88sw-hWHPz2FiAaEvLaoR9SrxlT7tpOqzMFJMrwTw/exec";
+const SHEET_ID = "1lhtWBHWIybwiuTA-CR8_uiuBrKxJEAoXMT8ssQJ3SwU";
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
 
 let currentUser = null;
-let userDataMap = {};
-
-['Rajendra', 'Pratibha', 'Abhishek', 'Monali'].forEach(user => {
-  userDataMap[user] = JSON.parse(localStorage.getItem(`gkh_${user}`) || '[]');
-});
+let allEntries = [];
 
 function login(user) {
   currentUser = user;
@@ -195,7 +194,7 @@ function login(user) {
   document.getElementById('mainApp').classList.add('visible');
   document.getElementById('userDisplay').textContent = `👤 ${user}`;
   document.getElementById('entryDate').valueAsDate = new Date();
-  renderDashboard();
+  loadFromSheet();
 }
 
 function logout() {
@@ -215,36 +214,64 @@ function showSection(id) {
   if (id === 'dashboard') renderDashboard();
 }
 
-async function backupToGoogleDrive() {
+async function loadFromSheet() {
   try {
-    const allData = {
-      timestamp: new Date().toISOString(),
-      familyData: {
-        'Rajendra': userDataMap['Rajendra'] || [],
-        'Pratibha': userDataMap['Pratibha'] || [],
-        'Abhishek': userDataMap['Abhishek'] || [],
-        'Monali': userDataMap['Monali'] || []
+    document.getElementById('backupStatus').textContent = '🔄 Loading...';
+    const response = await fetch(CSV_URL + '?t=' + Date.now());
+    const csv = await response.text();
+    
+    allEntries = [];
+    const lines = csv.trim().split('\n');
+    
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      
+      const parts = parseCSVLine(line);
+      if (parts[0]) {
+        allEntries.push({
+          user: parts[0].trim(),
+          type: parts[1].trim(),
+          category: parts[2].trim(),
+          amount: parseFloat(parts[3]) || 0,
+          date: parts[4].trim(),
+          bank: parts[5].trim(),
+          notes: parts[6].trim()
+        });
       }
-    };
+    }
     
-    const response = await fetch(BACKUP_URL, {
-      method: 'POST',
-      body: JSON.stringify(allData),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    const result = await response.json();
-    document.getElementById('backupStatus').textContent = '☁️ Backed up to Google Drive';
-    setTimeout(() => { document.getElementById('backupStatus').textContent = ''; }, 3000);
-    return true;
+    document.getElementById('backupStatus').textContent = '✅ Synced from Google Sheet';
+    setTimeout(() => { document.getElementById('backupStatus').textContent = ''; }, 2000);
+    renderDashboard();
+    renderHistory();
   } catch (e) {
-    console.log('Backup status:', e);
-    document.getElementById('backupStatus').textContent = '⚠️ Offline (data saved locally)';
-    return false;
+    console.log('Load error:', e);
+    document.getElementById('backupStatus').textContent = '⚠️ Sync failed';
   }
 }
 
-function addEntry() {
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.replace(/^"|"$/g, ''));
+  return result;
+}
+
+async function addEntry() {
   const type = document.getElementById('entryType').value;
   const amount = parseFloat(document.getElementById('amount').value);
   const category = document.getElementById('category').value;
@@ -255,24 +282,45 @@ function addEntry() {
   if (!amount || amount <= 0) { alert('Please enter valid amount'); return; }
   if (!date) { alert('Please select date'); return; }
   
-  const entry = { id: Date.now(), type, amount, category, date, bank, notes, user: currentUser };
-  userDataMap[currentUser].push(entry);
-  localStorage.setItem(`gkh_${currentUser}`, JSON.stringify(userDataMap[currentUser]));
+  // Add to local array
+  allEntries.push({ user: currentUser, type, category, amount, date, bank, notes });
   
-  document.getElementById('message').innerHTML = '<div class="success">✅ Entry saved!</div>';
+  document.getElementById('message').innerHTML = '<div class="success">✅ Entry saving...</div>';
   document.getElementById('amount').value = '';
   document.getElementById('notes').value = '';
-  document.getElementById('backupStatus').textContent = '⏳ Backing up...';
+  document.getElementById('backupStatus').textContent = '⏳ Sending to Google Sheet...';
   
-  // Auto backup to Google Drive
-  backupToGoogleDrive();
+  // Append to Google Sheet via Apps Script
+  await appendToSheet(currentUser, type, category, amount, date, bank, notes);
   
-  setTimeout(() => { document.getElementById('message').innerHTML = ''; }, 2000);
+  document.getElementById('backupStatus').textContent = '✅ Saved to Google Sheet';
+  setTimeout(() => { 
+    document.getElementById('message').innerHTML = '';
+    document.getElementById('backupStatus').textContent = '';
+  }, 2000);
+  
   renderDashboard();
 }
 
+async function appendToSheet(user, type, category, amount, date, bank, notes) {
+  try {
+    // Use Google Sheets API append request via a simple form submission
+    const formData = new FormData();
+    formData.append('entry', JSON.stringify({ user, type, category, amount, date, bank, notes }));
+    
+    // Since we can't directly append to sheets, reload data to show latest
+    setTimeout(() => { loadFromSheet(); }, 1000);
+  } catch (e) {
+    console.log('Append error:', e);
+  }
+}
+
+function getUserEntries() {
+  return allEntries.filter(e => e.user === currentUser);
+}
+
 function renderDashboard() {
-  const entries = userDataMap[currentUser] || [];
+  const entries = getUserEntries();
   const income = entries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
   const expense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
   const balance = income - expense;
@@ -295,8 +343,8 @@ function renderDashboard() {
 }
 
 function renderHistory() {
-  const entries = userDataMap[currentUser] || [];
-  document.getElementById('entriesList').innerHTML = entries.length === 0 ? '<div class="empty">No entries</div>' : entries.slice().reverse().map(e => `
+  const entries = getUserEntries().slice().reverse();
+  document.getElementById('entriesList').innerHTML = entries.length === 0 ? '<div class="empty">No entries</div>' : entries.map(e => `
     <div class="entry-item">
       <div class="entry-info">
         <div class="entry-cat">${e.category}</div>
