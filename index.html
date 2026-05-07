@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghar Ka Hisab</title>
+<style>
+body { font-family: Arial; text-align: center; padding: 50px; background: linear-gradient(135deg, #10B981 0%, #3B82F6 100%); color: white; }
+h1 { font-size: 48px; }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 400px; margin: 40px auto; }
+button { padding: 30px; font-size: 18px; background: rgba(255,255,255,0.2); border: 2px solid white; color: white; border-radius: 10px; cursor: pointer; font-weight: bold; }
+button:hover { background: rgba(255,255,255,0.3); }
+</style>
+</head>
+<body>
+<h1>🏠 Ghar Ka Hisab</h1>
+<p>Family Finance Manager</p>
+<div class="btns">
+  <button onclick="login('Rajendra')">👨 Rajendra</button>
+  <button onclick="login('Pratibha')">👩 Pratibha</button>
+  <button onclick="login('Abhishek')">👦 Abhishek</button>
+  <button onclick="login('Monali')">👧 Monali</button>
+</div>
+<script>
+function login(user) {
+  alert('Welcome ' + user + '!\n\nFull app coming soon!\nFor now, your data is saved locally.');
+  localStorage.setItem('currentUser', user);
+}
+</script>
+</body>
+</html>
